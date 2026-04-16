@@ -14,6 +14,7 @@ mongoose.connect(process.env.MONGO_URI)
 
 const LocationSchema = new mongoose.Schema({
   deviceId: String,
+  type: String,   // "truck" or "bin"
   lat: Number,
   lng: Number,
   timestamp: { type: Date, default: Date.now }

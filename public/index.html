@@ -55,31 +55,41 @@
   let markers = {}, routeLine = null;
   let positions = { tracker1: null, tracker2: null };
 
-  async function fetchLocations() {
-    try {
-      const res = await fetch(API + '/locations');
-      const data = await res.json();
+ async function fetchLocations() {
+  try {
+    const res = await fetch(API + '/locations');
+    const data = await res.json();
 
-      Object.keys(data).forEach(id => {
-  const item = data[id];
-  const { lat, lng, type } = item;
+    Object.keys(data).forEach(id => {
+      const item = data[id];
 
-  const position = [lat, lng];
+      if (!item || item.lat == null || item.lng == null) return;
 
-  if (!markers[id]) {
-    markers[id] = L.marker(position).addTo(map)
-      .bindPopup(`${type}: ${id}`);
-  } else {
-    markers[id].setLatLng(position);
+      const { lat, lng, type } = item;
+      const position = [lat, lng];
+
+      positions[id] = position;  // ✅ FIXED
+
+      if (!markers[id]) {
+        markers[id] = L.marker(position, {
+          icon: icons[type] || icons.bin
+        }).addTo(map)
+          .bindPopup(`${type || "device"}: ${id}`);
+      } else {
+        markers[id].setLatLng(position);
+      }
+    });
+
+    const allPositions = Object.values(positions).filter(p => p !== null);
+
+    if (allPositions.length > 0 && !hasFitted) {
+      map.fitBounds(allPositions, { padding: [60, 60] });
+      hasFitted = true;
+    }
+
+  } catch(e) { 
+    console.error(e); 
   }
-});
-
-      // Auto-fit map if both are visible
- const allPositions = Object.values(positions).filter(p => p !== null);
-
-if (allPositions.length > 0 && !hasFitted) {
-  map.fitBounds(allPositions, { padding: [60, 60] });
-  hasFitted = true;
 }
 
   async function getRoute() {
