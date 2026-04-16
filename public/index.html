@@ -39,6 +39,7 @@
 </div>
 
 <script>
+  let types = {};
   let hasFitted = false;
   const API = 'https://claude-pls.onrender.com';  // Empty = same origin (Railway serves both)
 
@@ -61,24 +62,25 @@
     const data = await res.json();
 
     Object.keys(data).forEach(id => {
-      const item = data[id];
+  const item = data[id];
 
-      if (!item || item.lat == null || item.lng == null) return;
+  if (!item || item.lat == null || item.lng == null) return;
 
-      const { lat, lng, type } = item;
-      const position = [lat, lng];
+  const { lat, lng, type } = item;
+  const position = [lat, lng];
 
-      positions[id] = position;  // ✅ FIXED
+  positions[id] = position;
+  types[id] = type; // 🔥 REQUIRED
 
-      if (!markers[id]) {
-        markers[id] = L.marker(position, {
-          icon: icons[type] || icons.bin
-        }).addTo(map)
-          .bindPopup(`${type || "device"}: ${id}`);
-      } else {
-        markers[id].setLatLng(position);
-      }
-    });
+  if (!markers[id]) {
+    markers[id] = L.marker(position, {
+      icon: icons[type] || icons.bin
+    }).addTo(map)
+      .bindPopup(`${type}: ${id}`);
+  } else {
+    markers[id].setLatLng(position);
+  }
+});
 
     const allPositions = Object.values(positions).filter(p => p !== null);
 
@@ -93,44 +95,92 @@
 }
 
   async function getRoute() {
-    if (!positions.tracker1 || !positions.tracker2) {
-      alert('Both trackers must have a fix first'); return;
+  // 🔍 find truck
+  let truck = null;
+
+  Object.keys(positions).forEach(id => {
+    if (types[id] === "truck") {
+      truck = positions[id];
     }
-    const [lat1, lng1] = positions.tracker1;
-    const [lat2, lng2] = positions.tracker2;
+  });
 
-    // OSRM public API - completely free, no key needed
-    const url = `https://router.project-osrm.org/route/v1/driving/` +
-      `${lng1},${lat1};${lng2},${lat2}?overview=full&geometries=geojson&steps=true`;
-
-    try {
-      const res = await fetch(url);
-      const data = await res.json();
-      const route = data.routes[0];
-
-      // Draw route on map
-      if (routeLine) map.removeLayer(routeLine);
-      routeLine = L.geoJSON(route.geometry, {
-        style: { color: '#1a73e8', weight: 5, opacity: 0.8 }
-      }).addTo(map);
-      map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
-
-      // Show distance and duration
-      const km = (route.distance / 1000).toFixed(1);
-      const min = Math.round(route.duration / 60);
-      document.getElementById('distance').textContent =
-        `${km} km · ~${min} min drive`;
-
-      // Show turn-by-turn steps
-      const steps = route.legs[0].steps;
-      const html = steps.map(s =>
-        `<div class="step">→ ${s.maneuver.instruction || s.name || 'Continue'}</div>`
-      ).join('');
-      document.getElementById('steps').innerHTML = html;
-    } catch(e) {
-      alert('Routing error — check console'); console.error(e);
-    }
+  if (!truck) {
+    alert("Truck not found");
+    return;
   }
+
+  // 🔍 find nearest bin
+  let nearest = null;
+  let minDist = Infinity;
+
+  Object.keys(positions).forEach(id => {
+    if (types[id] === "truck") return;
+
+    const pos = positions[id];
+    if (!pos) return;
+
+    const dist = Math.hypot(
+      truck[0] - pos[0],
+      truck[1] - pos[1]
+    );
+
+    if (dist < minDist) {
+      minDist = dist;
+      nearest = pos;
+    }
+  });
+
+  if (!nearest) {
+    alert("No bins found");
+    return;
+  }
+
+  const [lat1, lng1] = truck;
+  const [lat2, lng2] = nearest;
+
+  // 🌍 OSRM API
+  const url = `https://router.project-osrm.org/route/v1/driving/` +
+    `${lng1},${lat1};${lng2},${lat2}?overview=full&geometries=geojson&steps=true`;
+
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    const route = data.routes[0];
+
+    if (!route) {
+      alert("No route found");
+      return;
+    }
+
+    // 🗺️ Draw route
+    if (routeLine) map.removeLayer(routeLine);
+
+    routeLine = L.geoJSON(route.geometry, {
+      style: { color: '#1a73e8', weight: 5, opacity: 0.8 }
+    }).addTo(map);
+
+    map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
+
+    // 📏 Distance + time
+    const km = (route.distance / 1000).toFixed(1);
+    const min = Math.round(route.duration / 60);
+
+    document.getElementById('distance').textContent =
+      `${km} km · ~${min} min drive`;
+
+    // 🧾 Steps
+    const steps = route.legs[0].steps;
+    const html = steps.map(s =>
+      `<div class="step">→ ${s.maneuver.instruction || s.name || 'Continue'}</div>`
+    ).join('');
+
+    document.getElementById('steps').innerHTML = html;
+
+  } catch(e) {
+    alert('Routing error — check console');
+    console.error(e);
+  }
+}
    function sendTruckLocation() {
   navigator.geolocation.getCurrentPosition(async (pos) => {
     const lat = pos.coords.latitude;
