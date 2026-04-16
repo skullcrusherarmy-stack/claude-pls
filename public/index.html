@@ -142,10 +142,11 @@
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        deviceId: "truck1",
-        lat,
-        lng
-      })
+  deviceId: "truck1",
+  type: "truck",   // 🔥 THIS IS THE FIX
+  lat,
+  lng
+})
     });
   });
 }
