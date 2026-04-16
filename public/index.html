@@ -39,6 +39,7 @@
 </div>
 
 <script>
+  let hasFitted = false;
   const API = 'https://claude-pls.onrender.com';  // Empty = same origin (Railway serves both)
 
   const map = L.map('map').setView([20, 78], 5);  // Default: India
@@ -47,9 +48,9 @@
   }).addTo(map);
 
   const icons = {
-    t1: L.divIcon({ className: '', html: '<div style="background:#1a73e8;width:16px;height:16px;border-radius:50%;border:3px solid white;box-shadow:0 0 6px rgba(0,0,0,0.4)"></div>' }),
-    t2: L.divIcon({ className: '', html: '<div style="background:#e8431a;width:16px;height:16px;border-radius:50%;border:3px solid white;box-shadow:0 0 6px rgba(0,0,0,0.4)"></div>' })
-  };
+  truck: L.divIcon({ html: '<div style="background:blue;width:16px;height:16px;border-radius:50%"></div>' }),
+  bin: L.divIcon({ html: '<div style="background:green;width:16px;height:16px;border-radius:50%"></div>' })
+};
 
   let markers = {}, routeLine = null;
   let positions = { tracker1: null, tracker2: null };
@@ -59,38 +60,27 @@
       const res = await fetch(API + '/locations');
       const data = await res.json();
 
-      if (data.tracker1) {
-        const { lat, lng } = data.tracker1;
-        positions.tracker1 = [lat, lng];
-        if (!markers.t1) {
-          markers.t1 = L.marker([lat, lng], { icon: icons.t1 })
-            .bindPopup('<b>Tracker 1 (ESP32)</b>').addTo(map);
-        } else {
-          markers.t1.setLatLng([lat, lng]);
-        }
-        document.getElementById('t1-info').textContent =
-          `Tracker 1 (ESP32): ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-      }
+      Object.keys(data).forEach(id => {
+  const item = data[id];
+  const { lat, lng, type } = item;
 
-      if (data.tracker2) {
-        const { lat, lng } = data.tracker2;
-        positions.tracker2 = [lat, lng];
-        if (!markers.t2) {
-          markers.t2 = L.marker([lat, lng], { icon: icons.t2 })
-            .bindPopup('<b>Tracker 2 (ESP8266)</b>').addTo(map);
-        } else {
-          markers.t2.setLatLng([lat, lng]);
-        }
-        document.getElementById('t2-info').textContent =
-          `Tracker 2 (ESP8266): ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-      }
+  const position = [lat, lng];
+
+  if (!markers[id]) {
+    markers[id] = L.marker(position).addTo(map)
+      .bindPopup(`${type}: ${id}`);
+  } else {
+    markers[id].setLatLng(position);
+  }
+});
 
       // Auto-fit map if both are visible
-      if (positions.tracker1 && positions.tracker2) {
-        map.fitBounds([positions.tracker1, positions.tracker2], { padding: [60, 60] });
-      }
-    } catch(e) { console.error(e); }
-  }
+ const allPositions = Object.values(positions).filter(p => p !== null);
+
+if (allPositions.length > 0 && !hasFitted) {
+  map.fitBounds(allPositions, { padding: [60, 60] });
+  hasFitted = true;
+}
 
   async function getRoute() {
     if (!positions.tracker1 || !positions.tracker2) {
@@ -131,10 +121,28 @@
       alert('Routing error — check console'); console.error(e);
     }
   }
+   function sendTruckLocation() {
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
 
+    await fetch("https://claude-pls.onrender.com/location", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        deviceId: "truck1",
+        lat,
+        lng
+      })
+    });
+  });
+}
   // Poll every 5 seconds
   fetchLocations();
-  setInterval(fetchLocations, 5000);
+  setInterval(fetchLocations, 2000);
+  setInterval(sendTruckLocation, 5000);
 </script>
 </body>
 </html>
