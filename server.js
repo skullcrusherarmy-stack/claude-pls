@@ -55,9 +55,8 @@ app.delete('/clear', async (req, res) => {
 });
 
 app.use(express.static('public'));
-
-app.use(express.static('public'));
 console.log("PORT VALUE:", process.env.PORT);
+
 
 const PORT = process.env.PORT || 3000;
 
