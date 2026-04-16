@@ -70,4 +70,6 @@ app.use(express.static('public'));
 
 app.use(express.static('public'));
 
-app.listen(process.env.PORT || 3000, () => console.log('Server running'));
+app.listen(process.env.PORT || 3000, '0.0.0.0', () => {
+  console.log('Server running');
+});
