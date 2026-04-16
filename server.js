@@ -21,23 +21,8 @@ const LocationSchema = new mongoose.Schema({
 const Location = mongoose.model('Location', LocationSchema);
 
 app.post('/location', async (req, res) => {
-  try {
-    console.log("BODY:", req.body);  // 👈 ADD THIS
-
-    const { deviceId, lat, lng } = req.body;
-
-    if (!deviceId || lat == null || lng == null) {
-      return res.status(400).json({ error: "Missing data" });
-    }
-
-    const result = await Location.create({ deviceId, lat, lng });
-
-    res.json({ ok: true, data: result });
-
-  } catch (err) {
-    console.error("POST ERROR:", err);
-    res.status(500).json({ error: "Server error" });
-  }
+  console.log("HIT ROUTE");
+  res.json({ test: "working" });
 });
 
 app.get('/locations', async (req, res) => {
