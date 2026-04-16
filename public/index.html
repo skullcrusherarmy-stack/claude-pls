@@ -13,13 +13,29 @@
     #map { height: 100vh; }
 
     #panel {
-      position: absolute; top: 10px; right: 10px; z-index: 1000;
-      background: white; border-radius: 12px; padding: 16px;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.15); min-width: 240px;
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1000;
+      background: white;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+      min-width: 240px;
     }
 
-    #distance { font-size: 13px; font-weight: 600; color: #1a73e8; margin-top: 8px; }
-    .step { font-size: 11px; padding: 4px 0; border-bottom: 1px solid #eee; }
+    #distance {
+      font-size: 13px;
+      font-weight: 600;
+      color: #1a73e8;
+      margin-top: 8px;
+    }
+
+    .step {
+      font-size: 11px;
+      padding: 4px 0;
+      border-bottom: 1px solid #eee;
+    }
   </style>
 </head>
 
@@ -39,19 +55,27 @@ const API = 'https://claude-pls.onrender.com';
 const map = L.map('map').setView([12.84, 79.15], 15);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// Icons
-const icons = {
-  truck: L.divIcon({ html: '<div style="background:blue;width:16px;height:16px;border-radius:50%;border:2px solid white"></div>' }),
-  bin: L.divIcon({ html: '<div style="background:green;width:16px;height:16px;border-radius:50%;border:2px solid white"></div>' })
-};
+const truckIcon = L.divIcon({
+  html: '<div style="background:blue;width:16px;height:16px;border-radius:50%;border:2px solid white"></div>'
+});
+
+function getBinIcon(fill) {
+  let color = "green";
+  if (fill >= 70) color = "red";
+  else if (fill >= 40) color = "orange";
+
+  return L.divIcon({
+    html: `<div style="background:${color};width:16px;height:16px;border-radius:50%;border:2px solid white"></div>`
+  });
+}
 
 let markers = {};
-let positions = {};   // ✅ FIXED
+let positions = {};
 let types = {};
+let fills = {};
 let routeLine = null;
 let hasFitted = false;
 
-// 🔄 Fetch backend data
 async function fetchLocations() {
   try {
     const res = await fetch(API + '/locations');
@@ -61,19 +85,25 @@ async function fetchLocations() {
       const item = data[id];
       if (!item || !item.type) return;
 
-      const { lat, lng, type } = item;
+      const { lat, lng, type, fill } = item;
       const position = [lat, lng];
 
       positions[id] = position;
       types[id] = type;
+      fills[id] = fill ?? 0;
+
+      let icon = type === "truck"
+        ? truckIcon
+        : getBinIcon(fills[id]);
 
       if (!markers[id]) {
-        markers[id] = L.marker(position, {
-          icon: icons[type] || icons.bin
-        }).addTo(map)
-        .bindPopup(`${type}: ${id}`);
+        markers[id] = L.marker(position, { icon })
+          .addTo(map)
+          .bindPopup(`${type}: ${id}<br>Fill: ${fills[id]}%`);
       } else {
         markers[id].setLatLng(position);
+        markers[id].setIcon(icon);
+        markers[id].setPopupContent(`${type}: ${id}<br>Fill: ${fills[id]}%`);
       }
     });
 
@@ -88,7 +118,6 @@ async function fetchLocations() {
   }
 }
 
-// 🚚 Laptop GPS → truck
 function sendTruckLocation() {
   navigator.geolocation.getCurrentPosition(async (pos) => {
     const lat = pos.coords.latitude;
@@ -107,7 +136,6 @@ function sendTruckLocation() {
   });
 }
 
-// 🧠 Smart routing
 async function getRoute() {
   let truck = null;
 
@@ -123,7 +151,8 @@ async function getRoute() {
   let minDist = Infinity;
 
   Object.keys(positions).forEach(id => {
-    if (types[id] === "truck") return;
+    if (types[id] !== "bin") return;
+    if (fills[id] < 70) return;
 
     const pos = positions[id];
     if (!pos) return;
@@ -139,7 +168,11 @@ async function getRoute() {
     }
   });
 
-  if (!nearest) return;
+  if (!nearest) {
+    document.getElementById('distance').textContent = "No bins need pickup";
+    document.getElementById('steps').innerHTML = "";
+    return;
+  }
 
   const [lat1, lng1] = truck;
   const [lat2, lng2] = nearest;
@@ -174,7 +207,6 @@ async function getRoute() {
   }
 }
 
-// 🔄 Loops
 fetchLocations();
 setInterval(fetchLocations, 2000);
 setInterval(sendTruckLocation, 5000);
