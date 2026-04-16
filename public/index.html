@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>GPS Tracker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: sans-serif; }
+    #map { height: 100vh; }
+    #panel {
+      position: absolute; top: 10px; right: 10px; z-index: 1000;
+      background: white; border-radius: 12px; padding: 16px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.15); min-width: 240px;
+    }
+    #panel h3 { font-size: 14px; margin-bottom: 12px; color: #333; }
+    .info-row { font-size: 12px; color: #555; margin-bottom: 6px; }
+    #route-btn {
+      width: 100%; padding: 10px; background: #1a73e8; color: white;
+      border: none; border-radius: 8px; cursor: pointer; font-size: 13px;
+      margin-top: 12px;
+    }
+    #route-btn:hover { background: #1558b0; }
+    #steps { margin-top: 12px; max-height: 200px; overflow-y: auto; }
+    .step { font-size: 11px; color: #444; padding: 4px 0; border-bottom: 1px solid #eee; }
+    #distance { font-size: 13px; font-weight: 600; color: #1a73e8; margin-top: 8px; }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+<div id="panel">
+  <h3>GPS Trackers</h3>
+  <div class="info-row" id="t1-info">Tracker 1: waiting...</div>
+  <div class="info-row" id="t2-info">Tracker 2: waiting...</div>
+  <div id="distance"></div>
+  <button id="route-btn" onclick="getRoute()">Show Shortest Route</button>
+  <div id="steps"></div>
+</div>
+
+<script>
+  const API = '';  // Empty = same origin (Railway serves both)
+
+  const map = L.map('map').setView([20, 78], 5);  // Default: India
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+  }).addTo(map);
+
+  const icons = {
+    t1: L.divIcon({ className: '', html: '<div style="background:#1a73e8;width:16px;height:16px;border-radius:50%;border:3px solid white;box-shadow:0 0 6px rgba(0,0,0,0.4)"></div>' }),
+    t2: L.divIcon({ className: '', html: '<div style="background:#e8431a;width:16px;height:16px;border-radius:50%;border:3px solid white;box-shadow:0 0 6px rgba(0,0,0,0.4)"></div>' })
+  };
+
+  let markers = {}, routeLine = null;
+  let positions = { tracker1: null, tracker2: null };
+
+  async function fetchLocations() {
+    try {
+      const res = await fetch(API + '/locations');
+      const data = await res.json();
+
+      if (data.tracker1) {
+        const { lat, lng } = data.tracker1;
+        positions.tracker1 = [lat, lng];
+        if (!markers.t1) {
+          markers.t1 = L.marker([lat, lng], { icon: icons.t1 })
+            .bindPopup('<b>Tracker 1 (ESP32)</b>').addTo(map);
+        } else {
+          markers.t1.setLatLng([lat, lng]);
+        }
+        document.getElementById('t1-info').textContent =
+          `Tracker 1 (ESP32): ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      }
+
+      if (data.tracker2) {
+        const { lat, lng } = data.tracker2;
+        positions.tracker2 = [lat, lng];
+        if (!markers.t2) {
+          markers.t2 = L.marker([lat, lng], { icon: icons.t2 })
+            .bindPopup('<b>Tracker 2 (ESP8266)</b>').addTo(map);
+        } else {
+          markers.t2.setLatLng([lat, lng]);
+        }
+        document.getElementById('t2-info').textContent =
+          `Tracker 2 (ESP8266): ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      }
+
+      // Auto-fit map if both are visible
+      if (positions.tracker1 && positions.tracker2) {
+        map.fitBounds([positions.tracker1, positions.tracker2], { padding: [60, 60] });
+      }
+    } catch(e) { console.error(e); }
+  }
+
+  async function getRoute() {
+    if (!positions.tracker1 || !positions.tracker2) {
+      alert('Both trackers must have a fix first'); return;
+    }
+    const [lat1, lng1] = positions.tracker1;
+    const [lat2, lng2] = positions.tracker2;
+
+    // OSRM public API - completely free, no key needed
+    const url = `https://router.project-osrm.org/route/v1/driving/` +
+      `${lng1},${lat1};${lng2},${lat2}?overview=full&geometries=geojson&steps=true`;
+
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      const route = data.routes[0];
+
+      // Draw route on map
+      if (routeLine) map.removeLayer(routeLine);
+      routeLine = L.geoJSON(route.geometry, {
+        style: { color: '#1a73e8', weight: 5, opacity: 0.8 }
+      }).addTo(map);
+      map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
+
+      // Show distance and duration
+      const km = (route.distance / 1000).toFixed(1);
+      const min = Math.round(route.duration / 60);
+      document.getElementById('distance').textContent =
+        `${km} km · ~${min} min drive`;
+
+      // Show turn-by-turn steps
+      const steps = route.legs[0].steps;
+      const html = steps.map(s =>
+        `<div class="step">→ ${s.maneuver.instruction || s.name || 'Continue'}</div>`
+      ).join('');
+      document.getElementById('steps').innerHTML = html;
+    } catch(e) {
+      alert('Routing error — check console'); console.error(e);
+    }
+  }
+
+  // Poll every 5 seconds
+  fetchLocations();
+  setInterval(fetchLocations, 5000);
+</script>
+</body>
+</html>
