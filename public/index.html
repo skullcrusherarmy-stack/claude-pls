@@ -66,11 +66,14 @@
 
   if (!item || item.lat == null || item.lng == null) return;
 
+  // 🔥 IGNORE OLD DEVICES
+  if (!item.type) return;
+
   const { lat, lng, type } = item;
   const position = [lat, lng];
 
   positions[id] = position;
-  types[id] = type; // 🔥 REQUIRED
+  types[id] = type;
 
   if (!markers[id]) {
     markers[id] = L.marker(position, {
@@ -81,7 +84,6 @@
     markers[id].setLatLng(position);
   }
 });
-
     const allPositions = Object.values(positions).filter(p => p !== null);
 
     if (allPositions.length > 0 && !hasFitted) {
