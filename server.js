@@ -23,13 +23,18 @@ const Location = mongoose.model('Location', LocationSchema);
 
 app.post('/location', async (req, res) => {
   try {
-    const { deviceId, lat, lng } = req.body;
+    const { deviceId, type, lat, lng } = req.body;
 
-    if (!deviceId || lat == null || lng == null) {
+    if (!deviceId || !type || lat == null || lng == null) {
       return res.status(400).json({ error: "Missing data" });
     }
 
-    const result = await Location.create({ deviceId, lat, lng });
+    const result = await Location.create({
+      deviceId,
+      type,   // 🔥 THIS IS THE FIX
+      lat,
+      lng
+    });
 
     res.json({ ok: true, data: result });
 
