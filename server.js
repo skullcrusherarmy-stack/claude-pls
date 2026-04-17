@@ -1,4 +1,4 @@
-require('dotenv').config();   // ✅ FIRST LINE
+require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -7,23 +7,26 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ✅ FIXED LINE + added proper handling
 mongoose.connect(process.env.MONGO_URI)
-.then(() => console.log("MongoDB Connected"))
-.catch(err => console.log(err));
+  .then(() => console.log("MongoDB Connected"))
+  .catch(err => console.log(err));
 
+// ✅ ADDED fill
 const LocationSchema = new mongoose.Schema({
   deviceId: String,
   type: String,   // "truck" or "bin"
   lat: Number,
   lng: Number,
+  fill: Number,   // 🔥 NEW FIELD (0–100)
   timestamp: { type: Date, default: Date.now }
 });
+
 const Location = mongoose.model('Location', LocationSchema);
 
+// ✅ UPDATED POST
 app.post('/location', async (req, res) => {
   try {
-    const { deviceId, type, lat, lng } = req.body;
+    const { deviceId, type, lat, lng, fill } = req.body;  // 🔥 ADD fill
 
     if (!deviceId || !type || lat == null || lng == null) {
       return res.status(400).json({ error: "Missing data" });
@@ -31,9 +34,10 @@ app.post('/location', async (req, res) => {
 
     const result = await Location.create({
       deviceId,
-      type,   // 🔥 THIS IS THE FIX
+      type,
       lat,
-      lng
+      lng,
+      fill: type === "bin" ? (fill ?? 0) : null   // 🔥 STORE fill
     });
 
     res.json({ ok: true, data: result });
@@ -44,6 +48,7 @@ app.post('/location', async (req, res) => {
   }
 });
 
+// unchanged (good)
 app.get('/locations', async (req, res) => {
   try {
     const locations = await Location.aggregate([
@@ -68,14 +73,13 @@ app.get('/locations', async (req, res) => {
   }
 });
 
+// keep this
 app.delete('/clear', async (req, res) => {
   await Location.deleteMany({});
   res.json({ message: "All data deleted" });
 });
 
 app.use(express.static('public'));
-console.log("PORT VALUE:", process.env.PORT);
-
 
 const PORT = process.env.PORT || 3000;
 
